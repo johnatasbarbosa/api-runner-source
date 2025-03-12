@@ -52,3 +52,11 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Visual Studio settings
+.vs/
+.vscode/
+*.csproj.user
+*.csproj.DotSettings
+*.vspscc
+*.vssscc
