@@ -1,0 +1,38 @@
+<div class="params-two-column-layout">
+  <div class="params-sidebar">
+    <div class="select-group">
+      <label class="input-label">Aplicação:</label>
+      <select class="input-field" id="appSelector"></select>
+    </div>
+    <div class="select-group">
+      <label class="input-label">Ambiente:</label>
+      <select class="input-field" id="envSelector">
+        <option value="Local">Local</option>
+        <option value="Stage">Stage</option>
+        <option value="Homolog">Homolog</option>
+        <option value="Prod">Prod</option>
+      </select>
+    </div>
+  </div>
+  <div class="params-content">
+    <div class="config-scroll">
+      <div class="config-form">
+        <div class="config-section">
+          <h4 class="section-title">Configurações da Aplicação</h4>
+          <div class="input-group">
+            <label class="input-label">Nome da Aplicação</label>
+            <input type="text" class="input-field" id="appName" placeholder="Nome da aplicação">
+          </div>
+          <div class="input-group">
+            <label class="input-label">Caminho da Aplicação</label>
+            <input type="text" class="input-field" id="appPath" placeholder="C:\\Pasta\\Subpasta\\src\\App.api">
+          </div>
+        </div>
+        <div class="config-section">
+          <h4 class="section-title" id="ambienteTitle">Parâmetros do Ambiente: Local</h4>
+          <div id="parametrosContainer"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

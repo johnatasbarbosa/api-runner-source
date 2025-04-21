@@ -1,479 +1,483 @@
-using System;
-using System.Data;
 using System.Text.Json;
-using System.Diagnostics;
-using System.Windows.Forms;
-using System.Data.Common;
+using System.Text.Json.Nodes;
 using APIRunner.Models;
 using APIRunner.Business;
-using System.Reflection;
+using APIRunner.Services;
+using APIRunner.Enums;
+using System.Diagnostics;
 
 namespace APIRunner
 {
     public partial class Form1 : Form
     {
+        #region Propriedades e Campos
         public Config Config { get; set; }
+        private System.Windows.Forms.Timer? resizeTimer;
+        private Size targetSize;
+        private int resizeStep = 10;
+        private GitService? _gitService;
+        private ConfigManagerService? _configManagerService;
+        private ProcessManagerService? _processManagerService;
+        private WebViewService? _webViewService;
+        #endregion
 
+        #region Construtor e InicializaÃ§Ã£o
         public Form1()
         {
-            Config = new Config();
             InitializeComponent();
-            this.FormClosing += new FormClosingEventHandler(Form1_FormClosing);
+
+            _configManagerService = new ConfigManagerService("config.json");
+
+            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            {
+                this.FormClosing += Form1_FormClosing;
+            }
+
             if (File.Exists("config-update.json"))
             {
                 File.Delete("config.json");
                 File.Move("config-update.json", "config.json");
             }
-            LoadDataFromFile("config.json", true);
+
+            Config = _configManagerService.LoadConfig();
+
+            UpdateFormSize(Config.CompactInterface, animate: false);
         }
+        #endregion
 
-        private async void Form1_Load(object sender, EventArgs e)
+        #region ManipulaÃ§Ã£o de Interface
+        public void UpdateFormSize(bool isCompactInterface, bool animate = false)
         {
-            lblVersion.Text = "v. 1.4";
-            await Task.Run(() =>
-            {
-                CheckNewVersion();
-                LoadGitInfos();
-            });
-        }
+            Size newSize = isCompactInterface ? new Size(905, 461) : new Size(905, 549);
 
-        private async void DataGridButtons_CellClick(object sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex < 0) return;
-
-            if (!Config.Apps[e.RowIndex].FileExists)
+            if (animate)
             {
-                using (var fbd = new FolderBrowserDialog())
+                StartSmoothResize(newSize);
+            }
+            else
+            {
+                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
                 {
-                    DialogResult result = fbd.ShowDialog();
+                    this.ClientSize = newSize;
+                }
+            }
+        }
 
-                    if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(fbd.SelectedPath))
-                    {
-                        Config.Apps[e.RowIndex].Path = fbd.SelectedPath;
-                        ResetEnvironmentButtonTexts(e.RowIndex);
-                        ResetGitButtonTexts(e.RowIndex);
-                        await Task.Run(() => { LoadGitInfo(e.RowIndex); });
-                        JsonFile.UpdateJson("config.json", new Dictionary<string, string>() { { $"Apps.[{e.RowIndex}].Path", Config.Apps[e.RowIndex].Path } });
-                    }
+        private void StartSmoothResize(Size newSize)
+        {
+            targetSize = newSize;
+
+            if (resizeTimer == null)
+            {
+                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+                {
+                    resizeTimer = new System.Windows.Forms.Timer();
+                }
+                else
+                {
+                    throw new PlatformNotSupportedException("System.Windows.Forms.Timer is only supported on Windows 6.1 and later.");
+                }
+                resizeTimer.Interval = 10;
+                resizeTimer.Tick += ResizeTimer_Tick;
+            }
+
+            resizeTimer.Start();
+        }
+
+        private void ResizeTimer_Tick(object? sender, EventArgs e)
+        {
+            int widthDiff = 0;
+            int heightDiff = 0;
+
+            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            {
+                widthDiff = targetSize.Width - this.ClientSize.Width;
+                heightDiff = targetSize.Height - this.ClientSize.Height;
+            }
+
+            if (Math.Abs(widthDiff) <= resizeStep && Math.Abs(heightDiff) <= resizeStep)
+            {
+                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+                {
+                    this.ClientSize = targetSize;
+                }
+                if (resizeTimer != null && OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+                {
+                    resizeTimer.Stop();
                 }
                 return;
             }
 
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnName"].Index)
+            int newWidth = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
+                ? this.ClientSize.Width + Math.Sign(widthDiff) * Math.Min(resizeStep, Math.Abs(widthDiff))
+                : OperatingSystem.IsWindowsVersionAtLeast(6, 1) ? this.ClientSize.Width : 0;
+            int newHeight = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
+                ? this.ClientSize.Height + Math.Sign(heightDiff) * Math.Min(resizeStep, Math.Abs(heightDiff))
+                : 0;
+
+            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             {
-                OpenVisualStudio(e.RowIndex);
-            }
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnGitPull"].Index)
-            {
-                Pull(e.RowIndex);
-                if (Config.Apps[e.RowIndex].Environment == EnvironmentEnum.Local)
-                    CMD.RunUpdateDatabase(Config.Apps[e.RowIndex].Path);
-            }
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnLocal"].Index)
-            {
-                ButtonAction(e.RowIndex, EnvironmentEnum.Local, "btnLocal", Config.Apps[e.RowIndex].Local);
-            }
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnStage"].Index)
-            {
-                ButtonAction(e.RowIndex, EnvironmentEnum.Stage, "btnStage", Config.Apps[e.RowIndex].Stage);
-            }
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnHomolog"].Index)
-            {
-                ButtonAction(e.RowIndex, EnvironmentEnum.Homolog, "btnHomolog", Config.Apps[e.RowIndex].Homolog);
-            }
-            if (e.RowIndex >= 0 && e.ColumnIndex == dgvApps.Columns["btnProd"].Index)
-            {
-                ButtonAction(e.RowIndex, EnvironmentEnum.Prod, "btnProd", Config.Apps[e.RowIndex].Prod);
+                this.ClientSize = new Size(newWidth, newHeight);
             }
         }
+        #endregion
 
-        private void LoadDataFromFile(string filePath, bool applyCellClick = false)
+        #region Eventos do FormulÃ¡rio
+        private async void Form1_Load(object sender, EventArgs e)
         {
-            dgvApps.Rows.Clear();
             try
             {
-                var config = File.ReadAllText(filePath);
-                if (config == null)
+
+                var options = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
+                options.AdditionalBrowserArguments = "--enable-features=ExperimentalJavaScript";
+
+                // Criar ambiente com as opÃ§Ãµes
+                var environment = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, null, options);
+
+                // Inicializar com este ambiente em vez de null
+                await webView22.EnsureCoreWebView2Async(environment);
+
+                _webViewService = new WebViewService(webView22.CoreWebView2);
+
+                webView22.CoreWebView2.WebMessageReceived += WebView22_WebMessageReceived;
+
+                _gitService = new GitService(_webViewService.PostJsonToWeb);
+                _processManagerService = new ProcessManagerService(_webViewService.PostJsonToWeb, Config);
+
+                webView22.CoreWebView2.OpenDevToolsWindow();
+
+                string webContentPath = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
+                    ? Path.Combine(Application.StartupPath, "WebContent", "dist")
+                    : throw new PlatformNotSupportedException("Application.StartupPath is only supported on Windows 6.1 and later.");
+
+                webView22.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "apirunner.local", webContentPath, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
+                );
+
+                string htmlPath = Path.Combine(webContentPath, "index.html");
+                webView22.Source = new Uri("http://apirunner.local/index.html");
+
+                _webViewService.PostJsonToWeb(new { type = (int)WebMessageType.InitialCompactInterface, compactInterface = Config.CompactInterface });
+
+                await Task.Run(async () =>
                 {
-                    MessageBox.Show("File is empty.");
-                    return;
-                }
+                    if (_gitService != null)
+                    {
+                        await _gitService.LoadGitInfos(Config);
+                        _gitService.CheckNewVersion();
+                    }
+                });
 
-                Config = JsonSerializer.Deserialize<Config>(config);
-
-                txtEmail.Text = Config.Email;
-
-                for (var i = 0; i < Config.Apps.Count; i++)
-                {
-                    var app = Config.Apps[i];
-                    dgvApps.Rows.Add(i, app.Name, "Buscando");
-                    ResetEnvironmentButtonTexts(i, true);
-                    ResetGitButtonTexts(i);
-                }
-                // Set properties for the DataGridView
-                dgvApps.AllowUserToAddRows = false;
-                // Handle the CellClick event
-                if (applyCellClick) dgvApps.CellClick += DataGridButtons_CellClick;
-                IpReleased(true);
-                ResizeFormToDataGridView();
+                _webViewService.SendConfigDataToWeb(Config, true);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error reading file: {ex.Message}");
+                Debug.WriteLine($"Erro ao inicializar o WebView2: {ex.Message}");
             }
         }
 
-        private void CheckNewVersion()
+        private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
-            bool enabled;
-            string text;
-            if (Directory.Exists(Path.Combine("", ".git")))
+            foreach (var app in Config.Apps)
             {
-                var commits = Git.GetCommitsNotPulled("");
-                enabled = commits.Any();
-                text = commits.Any() ? "Atualizar API Runner" : "API Runner Atualizado";
-            }
-            else
-            {
-                enabled = false;
-                text = "Erro";
-            }
-            btnAtualizarVersao.Invoke(new Action(() =>
-            {
-                btnAtualizarVersao.Enabled = enabled;
-                btnAtualizarVersao.Text = text;
-            }));
-        }
-
-        private void LoadGitInfos()
-        {
-            for (var i = 0; i < Config.Apps.Count; i++)
-            {
-                LoadGitInfo(i);
-            }
-        }
-        private void LoadGitInfo(int index)
-        {
-            if (Config.Apps[index].FileExists)
-            {
-                Config.Apps[index].CurrentBranch = Git.GetCurrentGitBranch(Config.Apps[index].Path);
-                Config.Apps[index].Commits = Git.GetCommitsNotPulled(Config.Apps[index].Path);
-                dgvApps.Rows[index].Cells["Branch"].Value = Config.Apps[index].CurrentBranch + $"({Config.Apps[index].Commits.Count})";
-                dgvApps.Rows[index].Cells["Branch"].ToolTipText = Config.Apps[index].CurrentBranch + $"({Config.Apps[index].Commits.Count})";
-            }
-        }
-
-        private void LoadGitCommit(int index)
-        {
-            if (Config.Apps[index].FileExists)
-            {
-                Config.Apps[index].Commits = Git.GetCommitsNotPulled(Config.Apps[index].Path);
-                dgvApps.Rows[index].Cells["Branch"].Value = Config.Apps[index].CurrentBranch + $"({Config.Apps[index].Commits.Count})";
-                dgvApps.Rows[index].Cells["Branch"].ToolTipText = Config.Apps[index].CurrentBranch + $"({Config.Apps[index].Commits.Count})";
-            }
-        }
-
-        private async void OpenVisualStudio(int index)
-        {
-            await Task.Run(() =>
-            {
-                var path = Config.Apps[index].Path;
-                for (int i = 0; i < 3; i++)
+                if (app.Process != null && !app.Process.HasExited)
                 {
-                    var solutionFile = Directory.GetFiles(path).FirstOrDefault(f => f.Contains(".sln"));
-                    if (solutionFile != null)
+                    _processManagerService?.StopAllProcesses();
+                }
+                if (app.Process != null)
+                {
+                    CMD.StopProcess(app.Process);
+                }
+
+                if (app.VsProcess != null && !app.VsProcess.HasExited)
+                {
+                    try
                     {
-                        CMD.OpenVisualStudio(solutionFile);
-                        return;
+                        app.VsProcess.Exited -= null;
                     }
-                    else
-                    {
-                        path = Directory.GetParent(path).FullName;
-                    }
-                }
-                MessageBox.Show("Não foi possível encontrar a solução do projeto");
-            });
-        }
-
-        private async void Pull(int index)
-        {
-            await Task.Run(() =>
-            {
-                if (Config.Apps[index].FileExists)
-                {
-                    Git.Pull(Config.Apps[index].Path);
-                    LoadGitCommit(index);
-                }
-            });
-        }
-
-        private void AllowSeed(string path, bool allowSeed)
-        {
-            path = path + "//Startup.cs";
-            var seedCommmand = "services.AddHostedService<SeedConfig>();";
-            var startupFile = File.ReadAllLines(path);
-            var seedLine = string.Empty;
-            var seedLineIndex = 0;
-            for (int i = 0; i < startupFile.Length; i++)
-            {
-                if (startupFile[i].Contains(seedCommmand))
-                {
-                    seedLine = startupFile[i];
-                    seedLineIndex = i;
-                    break;
-                }
-            }
-            if (!string.IsNullOrEmpty(seedLine))
-            {
-                var indexCommand = seedLine.IndexOf(seedCommmand);
-                var isCommented = seedLine.Substring(0, indexCommand).Contains("//");
-                if (isCommented && allowSeed)
-                    seedLine = seedLine.Substring(0, indexCommand).Replace("//", "") + seedLine.Substring(indexCommand);
-                else if (!isCommented && !allowSeed)
-                    seedLine = seedLine.Insert(indexCommand, "//");
-                else
-                    return;
-
-                startupFile[seedLineIndex] = seedLine;
-                File.WriteAllLines(path, startupFile);
-            }
-        }
-
-        private void ButtonAction(int rowIndex, EnvironmentEnum environment, string buttonName, Dictionary<string, string> properties)
-        {
-            if ((environment == EnvironmentEnum.Local && Config.Apps[rowIndex].Local == null) ||
-                (environment == EnvironmentEnum.Stage && Config.Apps[rowIndex].Stage == null) ||
-                (environment == EnvironmentEnum.Homolog && Config.Apps[rowIndex].Homolog == null) ||
-                (environment == EnvironmentEnum.Prod && Config.Apps[rowIndex].Prod == null))
-                return;
-
-            CMD.StopProcess(Config.Apps[rowIndex].Process);
-            if (Config.Apps[rowIndex].Environment == environment)
-            {
-                Config.Apps[rowIndex].Environment = null;
-                Config.Apps[rowIndex].Process = null;
-
-                dgvApps.Rows[rowIndex].Cells[buttonName].Value = "Iniciar";
-            }
-            else
-            {
-                Config.Apps[rowIndex].Environment = environment;
-                ResetEnvironmentButtonTexts(rowIndex);
-                dgvApps.Rows[rowIndex].Cells[buttonName].Value = "Parar";
-
-                AllowSeed(Config.Apps[rowIndex].Path, Config.Apps[rowIndex].Environment == EnvironmentEnum.Local);
-
-                JsonFile.UpdateJson(Config.Apps[rowIndex].Path + "//appsettings.Development.json", properties);
-                Config.Apps[rowIndex].Process = CMD.RunDotnet(Config.Apps[rowIndex].Process, Config.Apps[rowIndex].Path);
-            }
-        }
-
-        private void ResetEnvironmentButtonTexts(int rowIndex, bool canDisable = false)
-        {
-            var text = Config.Apps[rowIndex].FileExists ? "Iniciar" : "Carregar";
-            var toolTiptext = Config.Apps[rowIndex].FileExists ? "Iniciar" : "Selecione a pasta onde estão as arquivos de appsettings";
-
-            dgvApps.Rows[rowIndex].Cells["btnLocal"].Value = text;
-            dgvApps.Rows[rowIndex].Cells["btnStage"].Value = text;
-            dgvApps.Rows[rowIndex].Cells["btnHomolog"].Value = text;
-            dgvApps.Rows[rowIndex].Cells["btnProd"].Value = text;
-
-            dgvApps.Rows[rowIndex].Cells["btnLocal"].ToolTipText = toolTiptext;
-            dgvApps.Rows[rowIndex].Cells["btnStage"].ToolTipText = toolTiptext;
-            dgvApps.Rows[rowIndex].Cells["btnHomolog"].ToolTipText = toolTiptext;
-            dgvApps.Rows[rowIndex].Cells["btnProd"].ToolTipText = toolTiptext;
-
-            if (canDisable && Config.Apps[rowIndex].FileExists)
-            {
-                text = "Not Found";
-                toolTiptext = "Configuração do ambiente não encontrada";
-                if (Config.Apps[rowIndex].Local == null)
-                {
-                    DisableButton(dgvApps.Rows[rowIndex].Cells["btnLocal"]);
-                    dgvApps.Rows[rowIndex].Cells["btnLocal"].Value = text;
-                    dgvApps.Rows[rowIndex].Cells["btnLocal"].ToolTipText = toolTiptext;
-                }
-                if (Config.Apps[rowIndex].Stage == null)
-                {
-                    DisableButton(dgvApps.Rows[rowIndex].Cells["btnStage"]);
-                    dgvApps.Rows[rowIndex].Cells["btnStage"].Value = text;
-                    dgvApps.Rows[rowIndex].Cells["btnStage"].ToolTipText = toolTiptext;
-                }
-                if (Config.Apps[rowIndex].Homolog == null)
-                {
-                    DisableButton(dgvApps.Rows[rowIndex].Cells["btnHomolog"]);
-                    dgvApps.Rows[rowIndex].Cells["btnHomolog"].Value = text;
-                    dgvApps.Rows[rowIndex].Cells["btnHomolog"].ToolTipText = toolTiptext;
-                }
-                if (Config.Apps[rowIndex].Prod == null)
-                {
-                    DisableButton(dgvApps.Rows[rowIndex].Cells["btnProd"]);
-                    dgvApps.Rows[rowIndex].Cells["btnProd"].Value = text;
-                    dgvApps.Rows[rowIndex].Cells["btnProd"].ToolTipText = toolTiptext;
+                    catch { }
                 }
             }
         }
+        #endregion
 
-        private void DisableButton(DataGridViewCell cell)
-        {
-            DataGridViewButtonCell buttonCell = (DataGridViewButtonCell)cell;
-            buttonCell.FlatStyle = FlatStyle.Popup; // Changes appearance to indicate disabled state
-            buttonCell.ReadOnly = true; // Makes the button non-clickable
-            buttonCell.Style.ForeColor = Color.Gray; // Optional: change text color
-        }
-
-        private void ResetGitButtonTexts(int rowIndex)
-        {
-            dgvApps.Rows[rowIndex].Cells["btnGitPull"].Value = Config.Apps[rowIndex].FileExists ? "Pull" : "Carregar";
-            dgvApps.Rows[rowIndex].Cells["btnGitPull"].ToolTipText = Config.Apps[rowIndex].FileExists ? "Pull" : "Carregar";
-        }
-
-        private async void IpReleased(bool tryRelease = false)
-        {
-            if (tryRelease)
-            {
-                btnUpdateIP.Enabled = false;
-                btnUpdateIP.Text = "Verificando";
-            }
-            await Task.Run(() =>
-            {
-                var connectionString = Config.Apps.SelectMany(a => a.Stage).FirstOrDefault(s => s.Key.Contains("ConnectionString"));
-                if (!string.IsNullOrEmpty(connectionString.Key))
-                {
-                    if (Database.VerifyConnection(connectionString.Value))
-                    {
-                        btnUpdateIP.Invoke(new Action(() =>
-                        {
-                            btnUpdateIP.Enabled = false;
-                            btnUpdateIP.Text = "IP liberado";
-                        }));
-                    }
-                    else if (tryRelease)
-                    {
-                        btnUpdateIP.Invoke(new Action(() =>
-                        {
-                            btnUpdateIP.Enabled = false;
-                            btnUpdateIP.Text = "Liberando IP";
-                        }));
-                        ReleaseIP();
-                    }
-                    else
-                    {
-                        btnUpdateIP.Invoke(new Action(() =>
-                        {
-                            btnUpdateIP.Enabled = true;
-                            btnUpdateIP.Text = "Liberar IP";
-                        }));
-                    }
-                }
-            });
-        }
-
-        private async void btnUpdateIP_Click(object sender, EventArgs e)
-        {
-            btnUpdateIP.Enabled = false;
-            btnUpdateIP.Text = "Verificando";
-            ReleaseIP();
-        }
-
-        private async void ReleaseIP()
+        #region ManipulaÃ§Ã£o de Mensagens do WebView
+        private async void WebView22_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
             {
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var message = JsonSerializer.Deserialize<WebMessage>(e.WebMessageAsJson, options);
+
+                if (message == null || !ValidateMessage(message, out WebMessageAction action))
+                    return;
+
+
+                switch (action)
+                {
+                    case WebMessageAction.LoadData:
+                        await HandleLoadData();
+                        break;
+                    case WebMessageAction.UpdateEmail:
+                        await HandleUpdateEmail(message.Email);
+                        break;
+                    case WebMessageAction.UpdateCompactInterface:
+                        await HandleUpdateCompactInterface(message.Enabled);
+                        break;
+                    case WebMessageAction.UpdateConfig:
+                        await HandleUpdateConfig(message.App);
+                        break;
+                    case WebMessageAction.CreateEnvironment:
+                        await HandleCreateEnvironment(message.App);
+                        break;
+                    case WebMessageAction.PullGit:
+                        await HandlePullGit(message.Index);
+                        break;
+                    case WebMessageAction.OpenVS:
+                        await HandleOpenVS(message.Index);
+                        break;
+                    case WebMessageAction.ToggleEnv:
+                        await HandleToggleEnv(message.Index, message.Env);
+                        break;
+                    case WebMessageAction.SelectDirectory:
+                        await HandleSelectDirectory(message.Index);
+                        break;
+                    case WebMessageAction.ReleaseIP:
+                        await HandleReleaseIP(true);
+                        break;
+                    case WebMessageAction.UpdateVersion:
+                        await HandleUpdateVersion();
+                        break;
+                    case WebMessageAction.Reload:
+                        await HandleReload();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Erro ao receber mensagem no WebView: {ex.Message}");
+            }
+        }
+
+        private bool ValidateMessage(WebMessage? message, out WebMessageAction action)
+        {
+            action = default;
+            if (message == null) return false;
+            if (!Enum.IsDefined(typeof(WebMessageAction), message.Action)) return false;
+            action = message.Action;
+            return true;
+        }
+
+        private async Task HandleLoadData()
+        {
+            _webViewService?.SendConfigDataToWeb(Config);
+            await Task.CompletedTask;
+        }
+
+        private async Task HandleUpdateEmail(string? email)
+        {
+            if (string.IsNullOrEmpty(email)) return;
+
+            _configManagerService?.UpdateEmail(email);
+            Config.Email = email;
+
+            await Task.CompletedTask;
+        }
+
+        private async Task HandleUpdateCompactInterface(bool isCompactEnabled)
+        {
+            _configManagerService?.UpdateCompactInterface(isCompactEnabled);
+            Config.CompactInterface = isCompactEnabled;
+            UpdateFormSize(isCompactEnabled, animate: true);
+
+            await Task.CompletedTask;
+        }
+
+        private async Task HandleUpdateConfig(JsonNode? appNode)
+        {
+            if (_configManagerService == null || _gitService == null || _webViewService == null)
+                throw new InvalidOperationException();
+
+            var updater = new UpdateService(_configManagerService, _gitService, _webViewService, Config);
+            await updater.UpdateAppAsync(appNode, HandleReleaseIP);
+        }
+
+        private Task HandleCreateEnvironment(JsonNode? appNode)
+        {
+            if (_configManagerService == null || _gitService == null || _webViewService == null)
+                throw new InvalidOperationException();
+
+            var updater = new UpdateService(_configManagerService, _gitService, _webViewService, Config);
+            updater.CreateEnvironment(appNode);
+            return Task.CompletedTask;
+        }
+
+        private async Task HandlePullGit(int index)
+        {
+            if (_gitService != null)
+                await _gitService.Pull(index, Config);
+        }
+
+        private async Task HandleOpenVS(int index)
+        {
+            if (_processManagerService != null)
+                await _processManagerService.OpenVisualStudio(index, Config);
+        }
+
+        private async Task HandleToggleEnv(int index, string? envValue)
+        {
+            if (string.IsNullOrEmpty(envValue) || !Enum.TryParse<EnvironmentEnum>(envValue, true, out var env))
+            {
+                Debug.WriteLine($"Erro: Ambiente invÃ¡lido: {envValue}");
+                return;
+            }
+
+            _processManagerService?.ButtonAction(index, env);
+            await Task.CompletedTask;
+        }
+
+        private Task HandleSelectDirectory(int index)
+        {
+            if (index < 0 || index >= Config.Apps.Count)
+                return Task.CompletedTask;
+
+            if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            {
+                _webViewService?.PostJsonToWeb(new
+                {
+                    type = (int)WebMessageType.DirectoryActionCompleted, // Usando o enum
+                    index,
+                    canceled = true,
+                    error = "SeleÃ§Ã£o de diretÃ³rio nÃ£o Ã© suportada nesta plataforma."
+                });
+                return Task.CompletedTask;
+            }
+
+            using var folderDialog = new FolderBrowserDialog();
+            if (!string.IsNullOrEmpty(Config.Apps[index].Path) && Directory.Exists(Config.Apps[index].Path))
+            {
+                folderDialog.SelectedPath = Config.Apps[index].Path;
+            }
+
+            if (folderDialog.ShowDialog() == DialogResult.OK)
+            {
+                Config.Apps[index].Path = folderDialog.SelectedPath;
+                _configManagerService?.SaveConfig(Config);
+                _gitService?.LoadGitCommit(index, Config);
+                _webViewService?.PostJsonToWeb(new { type = (int)WebMessageType.DirectoryActionCompleted, index });
+                _webViewService?.SendConfigDataToWeb(Config);
+            }
+            else
+            {
+                _webViewService?.PostJsonToWeb(new { type = (int)WebMessageType.DirectoryActionCompleted, index, canceled = true });
+            }
+
+            return Task.CompletedTask;
+        }
+        #endregion
+
+        #region Gerenciamento de IP
+        private async Task HandleReleaseIP(bool tryRelease = false)
+        {
+            var connectionString = Config.Apps
+                .SelectMany(a => a.Stage)
+                .FirstOrDefault(s => s.Key.Contains("ConnectionString"));
+
+            IpStatus status = IpStatus.IpBlocked;
+            bool enabled = true;
+
+            if (string.IsNullOrEmpty(connectionString.Key))
+            {
+                SendIpStatusToWeb(status, enabled);
+                return;
+            }
+
+            SendIpStatusToWeb(IpStatus.CheckingIp, false);
+
+            if (Database.VerifyConnection(connectionString.Value))
+            {
+                status = IpStatus.IpReleased;
+                enabled = false;
+            }
+            else if (tryRelease)
+            {
+                SendIpStatusToWeb(IpStatus.ReleasingIp, false);
+
                 if (!string.IsNullOrEmpty(Config.Email))
-                    await OAuth2.UpdateIp(Config.Email);
+                {
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+                        var updateIpTask = OAuth2.UpdateIp(Config.Email);
+
+                        var completedTask = await Task.WhenAny(updateIpTask, Task.Delay(10000, cts.Token));
+
+                        bool success = false;
+                        if (completedTask == updateIpTask)
+                        {
+                            success = await updateIpTask;
+                        }
+
+                        status = success ? IpStatus.IpReleased : IpStatus.IpBlocked;
+                        enabled = !success;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Erro ao liberar IP: {ex.Message}");
+                        status = IpStatus.IpBlocked;
+                        enabled = true;
+                    }
+                }
             }
-            finally
-            {
-                IpReleased();
-            }
+
+            SendIpStatusToWeb(status, enabled);
         }
 
-        private void btnEditEmail_Click(object sender, EventArgs e)
+        private void SendIpStatusToWeb(IpStatus status, bool enabled)
         {
-            if (Config.Email != txtEmail.Text)
+            var response = new
             {
-                JsonFile.UpdateJson("config.json", new Dictionary<string, string>() { { $"Email", txtEmail.Text } });
-                Config.Email = txtEmail.Text;
-            }
-        }
+                type = (int)WebMessageType.IpStatus,
+                status = (int)status,
+                enabled
+            };
 
-        private async void btnRecarregar_Click(object sender, EventArgs e)
-        {
-            IpReleased(true);
-            for (var i = 0; i < Config.Apps.Count; i++)
-            {
-                var app = Config.Apps[i];
-                dgvApps.Rows[i].Cells[2].Value = "Buscando";
-                ResetGitButtonTexts(i);
-            }
-            await Task.Run(() =>
-            {
-                LoadGitInfos();
-                CheckNewVersion();
-            });
+            _webViewService?.PostJsonToWeb(response);
         }
+        #endregion
 
-        private async void btnAtualizarVersao_Click(object sender, EventArgs e)
+        #region AtualizaÃ§Ã£o e Recarga
+        private async Task HandleUpdateVersion()
         {
-            btnAtualizarVersao.Text = "Atualizando";
-            await Task.Delay(1000);
+            var path = Directory.GetCurrentDirectory();
             File.Delete("update_version_run.bat");
             File.Move("update_version.bat", "update_version_run.bat");
             File.Move("config.json", "config-update.json");
-            CMD.RunBatFile(Directory.GetCurrentDirectory(), "update_version_run.bat");
-            Close();
+            await Task.Delay(500);
+            CMD.RunBatFile(path, "update_version_run.bat");
+            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            {
+                Close();
+            }
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        private async Task HandleReload()
         {
-            for (var i = 0; i < Config.Apps.Count; i++)
+            _webViewService?.PostJsonToWeb(new { type = (int)WebMessageType.ReloadStarted });
+
+
+            await Task.Run(async () =>
             {
-                CMD.StopProcess(Config.Apps[i].Process);
-            }
+                if (_gitService != null)
+                {
+                    await HandleReleaseIP(true);
+                    await _gitService.LoadGitInfos(Config);
+                    _gitService.CheckNewVersion();
+                }
+            });
+            _webViewService?.SendConfigDataToWeb(Config);
         }
-
-        private void ResizeFormToDataGridView()
-        {
-            // Calcula a largura total do DataGridView (largura das colunas mais as bordas)
-            int totalWidth = dgvApps.RowHeadersWidth; // Largura do cabeçalho de linha
-
-            // Soma a largura de cada coluna
-            foreach (DataGridViewColumn column in dgvApps.Columns)
-            {
-                if (column.Name != "Id")
-                    totalWidth += column.Width;
-            }
-
-            // Calcula a altura total do DataGridView (altura das linhas mais as bordas)
-            int totalHeight = dgvApps.ColumnHeadersHeight; // Altura do cabeçalho de coluna
-
-            // Soma a altura de cada linha
-            foreach (DataGridViewRow row in dgvApps.Rows)
-            {
-                totalHeight += row.Height;
-            }
-
-            // Define a largura e altura mínima para evitar o tamanho muito pequeno
-            int minWidth = 200;
-            int minHeight = 150;
-
-            dgvApps.Size = new Size(totalWidth, totalHeight);
-            // Ajusta a altura e largura da janela de acordo com o tamanho do DataGridView
-            this.ClientSize = new Size(
-                Math.Max(totalWidth, minWidth) + 25,
-                Math.Max(totalHeight, minHeight) + groupBoxHeader.Height + 25
-            );
-
-            // Calcula a posição X para mover o label para o limite direito do formulário
-            int novaPosicaoX = this.ClientSize.Width - lblVersion.Width -10;
-
-            // Define a nova posição mantendo a posição Y atual
-            lblVersion.Location = new Point(novaPosicaoX, lblVersion.Location.Y);
-
-            // Desabilita as barras de rolagem
-            dgvApps.ScrollBars = ScrollBars.None;
-        }
-
+        #endregion
     }
 }
