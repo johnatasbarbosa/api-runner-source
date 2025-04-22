@@ -131,10 +131,8 @@ namespace APIRunner
                 var options = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
                 options.AdditionalBrowserArguments = "--enable-features=ExperimentalJavaScript";
 
-                // Criar ambiente com as opções
                 var environment = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, null, options);
 
-                // Inicializar com este ambiente em vez de null
                 await webView22.EnsureCoreWebView2Async(environment);
 
                 _webViewService = new WebViewService(webView22.CoreWebView2);
@@ -144,7 +142,9 @@ namespace APIRunner
                 _gitService = new GitService(_webViewService.PostJsonToWeb);
                 _processManagerService = new ProcessManagerService(_webViewService.PostJsonToWeb, Config);
 
+                #if DEBUG
                 webView22.CoreWebView2.OpenDevToolsWindow();
+                #endif
 
                 string webContentPath = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
                     ? Path.Combine(Application.StartupPath, "WebContent", "dist")
@@ -348,7 +348,7 @@ namespace APIRunner
             {
                 _webViewService?.PostJsonToWeb(new
                 {
-                    type = (int)WebMessageType.DirectoryActionCompleted, // Usando o enum
+                    type = (int)WebMessageType.DirectoryActionCompleted,
                     index,
                     canceled = true,
                     error = "Seleção de diretório não é suportada nesta plataforma."
