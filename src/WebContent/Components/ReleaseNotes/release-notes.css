@@ -161,12 +161,14 @@
   color: #666;
   /* Cor do ícone de marcador */
   font-size: 0.9rem;
+  margin-top: 2px;
 }
 
 .version-number i.fa-fire-flame-curved {
   color: #ff6200;
   /* Cor do ícone de fogo */
   font-size: 0.9rem;
+  margin-top: 2px;
 }
 
 .version-date {
@@ -277,7 +279,4 @@
   color: #fff;
   position: relative;
   z-index: 1;
-  /* Para garantir que o badge fique sobre a linha */
 }
-
-/* ...existing code... */

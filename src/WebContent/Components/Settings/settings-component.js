@@ -9,18 +9,17 @@ import {
   updateOriginalFieldValue
 } from '../../Managers/state-manager.js';
 import { initTooltips, postMessage, showToast } from '../../Utils/utils.js';
-import unsavedChangesModalHtml from './Extras/unsaved-changes-modal.html?raw';
 import {
   configModal,
   revertChangedFields,
   revertChangedFieldsByScope,
-  setActiveConfirmationModal,
   setConfigModal,
   unsavedChangesFields,
   updateSaveButtonState
 } from './Managers/state-manager.js';
 import settingsHtml from './settings-component.html?raw';
 import './settings.css';
+import { showUnsavedChangesModal } from './SubComponents/UnsavedChangesModal/unsaved-changes-modal.js';
 import { getGeneralSettingsData, renderGeneralTab, setupGeneralTab } from './Tabs/General/general-tab.js';
 import { getParamsSettingsData, renderParamsTab, setupParamsTab } from './Tabs/Params/params-tab.js';
 
@@ -95,7 +94,7 @@ function setupModalEvents(modalElement) {
   const modalContent = modalElement.querySelector('.modal-content');
 
   // Configurar abas
-  setupGeneralTab(modalElement);
+  setupGeneralTab(modalElement, showUnsavedChangesModal);
   setupParamsTab(modalElement, showUnsavedChangesModal);
 
   // Eventos de clique nas abas
@@ -167,89 +166,6 @@ function switchTab(tabId, modalElement) {
   panels.forEach(panel => {
     panel.style.display = panel.id === (tabId === TAB_IDS.GERAL ? ELEMENT_IDS.GENERAL_TAB_CONTENT : ELEMENT_IDS.PARAMS_TAB_CONTENT) ? 'block' : 'none';
   });
-}
-
-/**
- * Exibe o modal de confirmação para alterações não salvas.
- * @param {Function} onConfirm - Função a executar ao confirmar.
- * @param {Function} onCancel - Função a executar ao cancelar.
- */
-function showUnsavedChangesModal(onConfirm, onCancel, fieldsToList = unsavedChangesFields) {
-  if (document.getElementById('unsavedChangesModal')) return;
-
-  const changedFieldsList = [...fieldsToList].map(fieldId => {
-    if (fieldId === 'email') return 'Email institucional';
-    if (fieldId === 'compactInterface') return 'Modo compacto de exibição';
-    if (fieldId === 'appName') return 'Nome da Aplicação';
-    if (fieldId === 'appPath') return 'Caminho da Aplicação';
-    if (fieldId.startsWith('param:')) return `Parâmetro: ${fieldId.substring(6)}`;
-    return fieldId;
-  });
-
-  const listHtml = changedFieldsList.length > 0
-    ? `<p class="modal-subtitle">Campos modificados:</p><ul class="changed-fields-list">${changedFieldsList.map(name => `<li>${name}</li>`).join('')}</ul>`
-    : '';
-
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = unsavedChangesModalHtml;
-
-  const modalBody = tempDiv.querySelector('.modal-body');
-  if (modalBody) {
-    const description = modalBody.querySelector('.modal-description');
-    if (description) {
-      description.insertAdjacentHTML('afterend', listHtml);
-    }
-  }
-
-  const modalElement = tempDiv.firstElementChild;
-  document.body.appendChild(modalElement);
-
-  const modalInstance = {
-    element: modalElement,
-    show: () => modalElement.style.display = 'block',
-    close: () => {
-      modalElement.style.display = 'none';
-      document.body.removeChild(modalElement);
-      setActiveConfirmationModal(null);
-    }
-  };
-
-  setActiveConfirmationModal(modalInstance);
-  modalInstance.show();
-
-  const btnConfirm = modalElement.querySelector('#btnConfirmUnsaved');
-  const btnCancel = modalElement.querySelector('#btnCancelUnsaved');
-  const btnClose = modalElement.querySelector('#btnCloseUnsavedModal');
-
-  btnConfirm.addEventListener('click', () => {
-    modalInstance.close();
-    onConfirm();
-  });
-
-  btnCancel.addEventListener('click', () => {
-    modalInstance.close();
-    onCancel();
-  });
-
-  btnClose.addEventListener('click', () => {
-    modalInstance.close();
-    onCancel();
-  });
-
-  modalElement.addEventListener('click', (event) => {
-    const modalContent = modalElement.querySelector('.modal-content');
-    if (!modalContent.contains(event.target)) {
-      event.stopPropagation();
-    }
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && modalElement.style.display === 'block') {
-      event.preventDefault();
-    }
-  });
-
-  initTooltips({ container: modalElement });
 }
 
 function saveSettings(modalElement) {
@@ -331,7 +247,8 @@ function checkUnsavedChangesBeforeClose(modalElement) {
         revertChangedFields();
         closeModal(modalElement);
       },
-      () => { }
+      () => { },
+      unsavedChangesFields
     );
   } else {
     closeModal(modalElement);

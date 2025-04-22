@@ -52,7 +52,6 @@ function renderVersionsContent(contentContainer) {
       // Versão mais recente
       versionNumber.classList.add('latest');
       versionNumber.innerHTML = `
-        <i class="fas fa-bookmark"></i>
         <i class="fas fa-fire-flame-curved"></i>
         V${version.version}
       `;
