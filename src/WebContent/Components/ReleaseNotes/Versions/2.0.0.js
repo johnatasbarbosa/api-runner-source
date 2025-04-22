@@ -5,7 +5,7 @@ export default {
     new: [
       "O layout do sistema foi atualizado para melhorar a experiência do usuário, com novos ícones e cores.",
       "Agora temos uma tela de configurações para facilitar o acesso às configurações que antes eram apenas feitas apenas no config.json",
-      "Quer saber as novidades? A tela de notas de release que você está lendo foi criada para você endenter o que mudou!",
+      "Quer saber as novidades? A tela de notas de release que você está lendo foi criada para você entender o que mudou!",
       "Se der falha, não se preocupe! Agora temos telas de erro que mostram o que aconteceu e como resolver.",
       "Se você usa poucas aplicações, o modo compacto foi criado para você, basta acessar o menu de configurações e ativá-lo.",
       "Notificações vão surgir quando houver alterações nas configurações do sistema, assim você entende o que realmente foi alterado.",
