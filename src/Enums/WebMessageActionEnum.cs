@@ -15,6 +15,7 @@ namespace APIRunner.Enums
     SelectDirectory = 8,
     ReleaseIP = 9,
     UpdateVersion = 10,
-    Reload = 11
+    Reload = 11,
+    CloseApplication = 12
   }
 }

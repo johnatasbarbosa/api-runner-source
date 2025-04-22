@@ -45,15 +45,23 @@ function createModalHtml(parsedError) {
  * Exibe um modal de erro com base na mensagem fornecida.
  * @param {string} error A mensagem de erro a ser exibida.
  */
-export function showErrorModal(error) {
+export function showErrorModal(error, callback = null) {
   if (activeModal) {
     activeModal.remove();
     setActiveModal(null);
   }
 
-  const parsedError = parseGitError(error);
-  const modalHtml = createModalHtml(parsedError);
+  let parsedError;
 
+  if (typeof error === 'object' && error !== null && error.title && error.description) {
+    parsedError = {
+      title: error.title,
+      description: error.description,
+      originalError: error.originalError || ''
+    };
+  } else { parsedError = parseGitError(error); }
+
+  const modalHtml = createModalHtml(parsedError);
   const modalElement = document.createElement('div');
   modalElement.innerHTML = modalHtml;
   document.body.appendChild(modalElement);
@@ -63,5 +71,9 @@ export function showErrorModal(error) {
   okButton.addEventListener('click', () => {
     modalElement.remove();
     setActiveModal(null);
+
+    if (typeof callback === 'function') {
+      callback();
+    }
   });
 }

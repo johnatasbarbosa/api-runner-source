@@ -57,6 +57,20 @@ export function handleDataLoaded(data) {
   setIsReloading(false);
   fillTable(appsData);
 
+  if (!data.apps || data.apps.length === 0) {
+    showErrorModal(
+      {
+        title: 'Configuração inválida',
+        description: 'Parece que nenhuma aplicação foi definida em seu config.json. Por gentileza, confira a estrutura do arquivo de configuração e reinicie o programa.',
+        originalError: 'Failure to load applications from config.json'
+      },
+      () => {
+        postMessage({ action: WebMessageAction.CloseApplication });
+      }
+    );
+    return;
+  }
+
   if (pendingToastAppIndex !== null) {
     const appJustFinishedLoading = previouslyLoadingSystems.has(pendingToastAppIndex) &&
       !loadingSystems.has(pendingToastAppIndex);

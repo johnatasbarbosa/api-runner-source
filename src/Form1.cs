@@ -251,6 +251,9 @@ namespace APIRunner
                     case WebMessageAction.Reload:
                         await HandleReload();
                         break;
+                    case WebMessageAction.CloseApplication:
+                        await HandleCloseApplication();
+                        break;
                 }
             }
             catch (Exception ex)
@@ -477,6 +480,20 @@ namespace APIRunner
                 }
             });
             _webViewService?.SendConfigDataToWeb(Config);
+        }
+
+        private async Task HandleCloseApplication()
+        {
+            _processManagerService?.StopAllProcesses();
+
+            await Task.Delay(200);
+
+            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            {
+                Application.Exit();
+            }
+
+            await Task.CompletedTask;
         }
         #endregion
     }
