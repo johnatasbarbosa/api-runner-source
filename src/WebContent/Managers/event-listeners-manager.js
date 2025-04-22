@@ -33,7 +33,7 @@ import { checkInternetConnection, postMessage, setButtonLoading } from '../Utils
 // Constantes para IDs dos botões
 const BUTTON_IDS = {
   RELOAD: 'btnReload',
-  UPDATE_IP: 'btnAtualizarIP',
+  UPDATE_IP: 'btnUpdateIP',
   UPDATE_VERSION: 'btnUpdateVersion',
   SETTINGS: 'btnSettings',
   RELEASE_NOTES: 'btnReleaseNotes',

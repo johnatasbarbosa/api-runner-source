@@ -36,10 +36,6 @@ import {
 const ELEMENT_IDS = {
   BTN_RELOAD: 'btnReload',
   BTN_UPDATE_IP: 'btnUpdateIP',
-  BTN_UPDATE_VERSION: 'btnUpdateVersion',
-  TXT_EMAIL: 'txtEmail',
-  VERSION_BADGE: '.version-badge',
-  COMPACT_INTERFACE_TOGGLE: '#compactInterfaceToggle'
 };
 
 /**

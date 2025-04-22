@@ -46,7 +46,7 @@ namespace APIRunner.Services
       return new
       {
         type = (int)WebMessageType.DataLoaded,
-        version = "v.2.0",
+        version = "v.2.0.0",
         apps,
         email = config.Email,
         compactInterface = config.CompactInterface,

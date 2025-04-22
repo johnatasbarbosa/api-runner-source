@@ -47,7 +47,11 @@ function createModalHtml(parsedError) {
  */
 export function showErrorModal(error, callback = null) {
   if (activeModal) {
-    activeModal.remove();
+    if (activeModal.remove && typeof activeModal.remove === 'function') {
+      activeModal.remove();
+    } else if (activeModal.parentNode) {
+      activeModal.parentNode.removeChild(activeModal);
+    }
     setActiveModal(null);
   }
 
