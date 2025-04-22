@@ -15,7 +15,7 @@ public static class Database
                 return true;
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return false;
         }

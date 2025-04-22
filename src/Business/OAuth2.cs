@@ -39,6 +39,10 @@ public static class OAuth2
         var tokenStr = await tokenResponse.Content.ReadAsStringAsync();
         var tokenResult = JsonSerializer.Deserialize<TokenDto>(tokenStr);
 
+        if (tokenResult == null || string.IsNullOrEmpty(tokenResult.access_token))
+        {
+            throw new InvalidOperationException("Failed to retrieve a valid access token.");
+        }
         return tokenResult.access_token;
     }
 
@@ -52,10 +56,10 @@ public static class OAuth2
 
 public class TokenDto
 {
-    public string access_token { get; set; }
+    public string? access_token { get; set; }
     public int expires_in { get; set; }
-    public string token_type { get; set; }
-    public string error { get; set; }
+    public string? token_type { get; set; }
+    public string? error { get; set; }
 }
 
 public class UpdateIPDto

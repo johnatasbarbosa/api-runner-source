@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace APIRunner.Business
 {
@@ -7,18 +8,17 @@ namespace APIRunner.Business
     {
         public static string GetCurrentGitBranch(string path)
         {
-            return ExecuteGitCommand("rev-parse --abbrev-ref HEAD", path)?.Trim();
+            return ExecuteGitCommand("rev-parse --abbrev-ref HEAD", path)?.Trim() ?? string.Empty;
         }
 
         public static List<string> GetCommitsNotPulled(string path)
         {
-            // First, fetch updates from the remote
             ExecuteGitCommand("fetch", path);
 
-            // Then, get the list of commits that are in the upstream tracking branch but not in the current branch
             var commits = ExecuteGitCommand("log ..@{u} --oneline", path);
             return commits.Split('\n').Where(c => c.Length > 0).ToList();
         }
+
 
         public static string Pull(string path)
         {
@@ -33,6 +33,7 @@ namespace APIRunner.Business
         static string ExecuteGitCommand(string arguments, string path)
         {
             StringBuilder output = new StringBuilder();
+            StringBuilder error = new StringBuilder();
 
             ProcessStartInfo processStartInfo = new ProcessStartInfo
             {
@@ -40,6 +41,7 @@ namespace APIRunner.Business
                 Arguments = arguments,
                 WorkingDirectory = path,
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -49,13 +51,34 @@ namespace APIRunner.Business
                 process.StartInfo = processStartInfo;
                 process.Start();
 
-                while (!process.StandardOutput.EndOfStream)
+                var outputTask = Task.Run(() =>
                 {
-                    string line = process.StandardOutput.ReadLine();
-                    output.AppendLine(line);
-                }
+                    while (!process.StandardOutput.EndOfStream)
+                    {
+                        string? line = process.StandardOutput.ReadLine();
+                        if (line != null)
+                        {
+                            output.AppendLine(line);
+                        }
+                    }
+                });
 
+                var errorTask = Task.Run(() =>
+                {
+                    while (!process.StandardError.EndOfStream)
+                    {
+                        string line = process.StandardError.ReadLine() ?? string.Empty;
+                        error.AppendLine(line);
+                    }
+                });
+
+                Task.WaitAll(outputTask, errorTask);
                 process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception($"Git command failed with exit code {process.ExitCode}. Error: {error.ToString().Trim()}");
+                }
             }
 
             return output.ToString().Replace("\r", "");
