@@ -5,9 +5,12 @@ using APIRunner.Business;
 using APIRunner.Services;
 using APIRunner.Enums;
 using System.Diagnostics;
-
+using System.Reflection;
+using System.Text;
+using Microsoft.Web.WebView2.Core;
 namespace APIRunner
 {
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public partial class Form1 : Form
     {
         #region Propriedades e Campos
@@ -20,7 +23,6 @@ namespace APIRunner
         private ProcessManagerService? _processManagerService;
         private WebViewService? _webViewService;
         #endregion
-
         #region Construtor e Inicialização
         public Form1()
         {
@@ -127,35 +129,54 @@ namespace APIRunner
         {
             try
             {
-
-                var options = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
+                var options = new CoreWebView2EnvironmentOptions();
                 options.AdditionalBrowserArguments = "--enable-features=ExperimentalJavaScript";
 
-                var environment = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, null, options);
+                string? userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "APIRunner"); // Ou outro nome adequado
+                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
 
                 await webView22.EnsureCoreWebView2Async(environment);
 
+                if (webView22.CoreWebView2 == null)
+                {
+                    Trace.WriteLine("!!! FATAL ERROR: webView22.CoreWebView2 is NULL after EnsureCoreWebView2Async!");
+                    if (OperatingSystem.IsWindowsVersionAtLeast(6, 1)) Application.Exit();
+                    return;
+                }
+
                 _webViewService = new WebViewService(webView22.CoreWebView2);
-
-                webView22.CoreWebView2.WebMessageReceived += WebView22_WebMessageReceived;
-
                 _gitService = new GitService(_webViewService.PostJsonToWeb);
                 _processManagerService = new ProcessManagerService(_webViewService.PostJsonToWeb, Config);
+                webView22.CoreWebView2.WebMessageReceived += WebView22_WebMessageReceived;
 
-                #if DEBUG
+                // Abrir DevTools apenas em modo Debug
+#if DEBUG
                 webView22.CoreWebView2.OpenDevToolsWindow();
-                #endif
+#endif
 
-                string webContentPath = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
-                    ? Path.Combine(Application.StartupPath, "WebContent", "dist")
-                    : throw new PlatformNotSupportedException("Application.StartupPath is only supported on Windows 6.1 and later.");
+                bool isDevelopment = false;
+                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+                {
+                    string webContentPath = Path.Combine(Application.StartupPath, "WebContent", "dist");
+                    isDevelopment = Directory.Exists(webContentPath);
+                }
 
-                webView22.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "apirunner.local", webContentPath, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
-                );
-
-                string htmlPath = Path.Combine(webContentPath, "index.html");
-                webView22.Source = new Uri("http://apirunner.local/index.html");
+                if (isDevelopment)
+                {
+                    // --- MODO DESENVOLVIMENTO ---
+                    string webContentPath = Path.Combine(Application.StartupPath, "WebContent", "dist");
+                    webView22.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "apirunner.local", webContentPath, CoreWebView2HostResourceAccessKind.Allow
+                    );
+                    webView22.Source = new Uri("http://apirunner.local/index.html");
+                }
+                else
+                {
+                    // --- MODO PRODUÇÃO (Recursos Embutidos) ---
+                    webView22.CoreWebView2.AddWebResourceRequestedFilter("http://apirunner.local/*", CoreWebView2WebResourceContext.All);
+                    webView22.CoreWebView2.WebResourceRequested += CoreWebView2_WebResourceRequested;
+                    webView22.CoreWebView2.Navigate("http://apirunner.local/index.html");
+                }
 
                 _webViewService.PostJsonToWeb(new { type = (int)WebMessageType.InitialCompactInterface, compactInterface = Config.CompactInterface });
 
@@ -172,7 +193,8 @@ namespace APIRunner
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Erro ao inicializar o WebView2: {ex.Message}");
+                Trace.WriteLine($"!!! EXCEPTION in Form1_Load: {ex.ToString()}");
+                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1)) Application.Exit();
             }
         }
 
@@ -202,6 +224,109 @@ namespace APIRunner
         #endregion
 
         #region Manipulação de Mensagens do WebView
+
+        private void CoreWebView2_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+        {
+            string uri = e.Request.Uri;
+
+            if (!uri.StartsWith("http://apirunner.local/"))
+            {
+                return;
+            }
+
+            try
+            {
+                string relativePath = uri.Substring("http://apirunner.local/".Length);
+                if (string.IsNullOrEmpty(relativePath) || relativePath == "/")
+                {
+                    relativePath = "index.html";
+                }
+
+                int queryIndex = relativePath.IndexOf('?');
+                if (queryIndex >= 0) relativePath = relativePath.Substring(0, queryIndex);
+
+                string resourcePath = relativePath.Replace('/', '.');
+                string resourceName = $"Executor_de_Projetos.WebContent.dist.{resourcePath}";
+
+                var assembly = Assembly.GetExecutingAssembly();
+
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream != null)
+                    {
+                        var ms = new MemoryStream();
+                        stream.CopyTo(ms);
+                        ms.Position = 0;
+
+                        string mimeType = GetMimeType(relativePath);
+
+                        if (webView22?.CoreWebView2?.Environment != null)
+                        {
+                            string contentTypeHeader = $"Content-Type: {mimeType}";
+                            if (mimeType.StartsWith("text/") || mimeType == "application/javascript")
+                            {
+                                contentTypeHeader += "; charset=utf-8";
+                            }
+
+                            var response = webView22.CoreWebView2.Environment.CreateWebResourceResponse(
+                                ms,
+                                200,
+                                "OK",
+                                $"{contentTypeHeader}\nAccess-Control-Allow-Origin: *"
+                            );
+                            e.Response = response;
+                        }
+                    }
+                    else
+                    {
+                        Trace.WriteLine($"!!! CoreWebView2_WebResourceRequested - Resource NOT FOUND: {resourceName}");
+
+                        if (webView22?.CoreWebView2?.Environment != null)
+                        {
+                            e.Response = webView22.CoreWebView2.Environment.CreateWebResourceResponse(
+                                null,
+                                404,
+                                "Not Found",
+                                "Content-Type: text/plain"
+                            );
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"!!! EXCEPTION in CoreWebView2_WebResourceRequested for URI {uri}: {ex.ToString()}");
+                if (webView22?.CoreWebView2?.Environment != null)
+                {
+                    try
+                    {
+                        e.Response = webView22.CoreWebView2.Environment.CreateWebResourceResponse(null, 500, "Internal Server Error", "Content-Type: text/plain");
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        private string GetMimeType(string path)
+        {
+            string ext = Path.GetExtension(path).ToLower();
+            return ext switch
+            {
+                ".html" => "text/html",
+                ".js" => "text/javascript",
+                ".css" => "text/css",
+                ".json" => "application/json",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".svg" => "image/svg+xml",
+                ".woff" => "font/woff",
+                ".woff2" => "font/woff2",
+                ".ttf" => "font/ttf",
+                _ => "application/octet-stream",
+            };
+        }
+
         private async void WebView22_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
