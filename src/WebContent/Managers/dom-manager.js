@@ -391,6 +391,9 @@ export function updateVersionButton(updateAvailable) {
       }
     }, textChanged ? 800 : 0);
   }
+
+  updateVersionButton.disabled = !updateAvailable;
+  updateVersionButton.style.pointerEvents = updateAvailable ? 'auto' : 'none';
 }
 
 /**
