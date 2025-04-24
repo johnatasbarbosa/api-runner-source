@@ -23,6 +23,13 @@ namespace APIRunner
         private ProcessManagerService? _processManagerService;
         private WebViewService? _webViewService;
         #endregion
+
+        #region DPI Scaling
+        private const int BaseDpi = 96;
+        private readonly Size BaseNormalSize = new Size(905, 549);
+        private readonly Size BaseCompactSize = new Size(905, 461);
+        #endregion
+
         #region Construtor e Inicialização
         public Form1()
         {
@@ -42,84 +49,118 @@ namespace APIRunner
             }
 
             Config = _configManagerService.LoadConfig();
+        }
+        #endregion
 
-            UpdateFormSize(Config.CompactInterface, animate: false);
+        #region DPI Scaling Helper
+        private Size CalculateScaledSize(Size baseSize)
+        {
+            float currentDpi = this.DeviceDpi;
+
+            if (currentDpi <= 0)
+            {
+                try
+                {
+                    using (Graphics g = this.CreateGraphics())
+                    {
+                        currentDpi = g.DpiX;
+                    }
+                }
+                catch
+                {
+                    currentDpi = BaseDpi;
+                }
+            }
+
+            float scaleFactor = currentDpi / BaseDpi;
+
+            int scaledWidth = (int)Math.Round(baseSize.Width * scaleFactor);
+            int scaledHeight = (int)Math.Round(baseSize.Height * scaleFactor);
+
+            return new Size(scaledWidth, scaledHeight);
         }
         #endregion
 
         #region Manipulação de Interface
         public void UpdateFormSize(bool isCompactInterface, bool animate = false)
         {
-            Size newSize = isCompactInterface ? new Size(905, 461) : new Size(905, 549);
+            Size baseTargetSize = isCompactInterface ? BaseCompactSize : BaseNormalSize;
 
-            if (animate)
+            Size newScaledSize = CalculateScaledSize(baseTargetSize);
+
+            if (animate && OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             {
-                StartSmoothResize(newSize);
+                
+                StartSmoothResize(newScaledSize);
             }
             else
             {
                 if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
                 {
-                    this.ClientSize = newSize;
+                    
+                    this.ClientSize = newScaledSize;
                 }
+                
             }
         }
 
-        private void StartSmoothResize(Size newSize)
+
+        private void StartSmoothResize(Size newScaledSize)
         {
-            targetSize = newSize;
+            targetSize = newScaledSize;
 
             if (resizeTimer == null)
             {
                 if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
                 {
                     resizeTimer = new System.Windows.Forms.Timer();
+                    resizeTimer.Interval = 10;
+                    resizeTimer.Tick += ResizeTimer_Tick;
                 }
                 else
                 {
-                    throw new PlatformNotSupportedException("System.Windows.Forms.Timer is only supported on Windows 6.1 and later.");
+                    this.ClientSize = targetSize;
+                    return;
+
                 }
-                resizeTimer.Interval = 10;
-                resizeTimer.Tick += ResizeTimer_Tick;
             }
 
-            resizeTimer.Start();
+            if (this.ClientSize != targetSize)
+            {
+                resizeTimer?.Start();
+            }
         }
 
         private void ResizeTimer_Tick(object? sender, EventArgs e)
         {
-            int widthDiff = 0;
-            int heightDiff = 0;
-
-            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             {
-                widthDiff = targetSize.Width - this.ClientSize.Width;
-                heightDiff = targetSize.Height - this.ClientSize.Height;
-            }
-
-            if (Math.Abs(widthDiff) <= resizeStep && Math.Abs(heightDiff) <= resizeStep)
-            {
-                if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
-                {
-                    this.ClientSize = targetSize;
-                }
-                if (resizeTimer != null && OperatingSystem.IsWindowsVersionAtLeast(6, 1))
-                {
-                    resizeTimer.Stop();
-                }
+                resizeTimer?.Stop();
                 return;
             }
 
-            int newWidth = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
-                ? this.ClientSize.Width + Math.Sign(widthDiff) * Math.Min(resizeStep, Math.Abs(widthDiff))
-                : OperatingSystem.IsWindowsVersionAtLeast(6, 1) ? this.ClientSize.Width : 0;
-            int newHeight = OperatingSystem.IsWindowsVersionAtLeast(6, 1)
-                ? this.ClientSize.Height + Math.Sign(heightDiff) * Math.Min(resizeStep, Math.Abs(heightDiff))
-                : 0;
+            int widthDiff = targetSize.Width - this.ClientSize.Width;
+            int heightDiff = targetSize.Height - this.ClientSize.Height;
 
-            if (OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            if (Math.Abs(widthDiff) <= resizeStep && Math.Abs(heightDiff) <= resizeStep)
             {
-                this.ClientSize = new Size(newWidth, newHeight);
+                this.ClientSize = targetSize;
+                resizeTimer?.Stop();
+                return;
+            }
+
+            int stepW = Math.Sign(widthDiff) * Math.Min(resizeStep, Math.Abs(widthDiff));
+            int stepH = Math.Sign(heightDiff) * Math.Min(resizeStep, Math.Abs(heightDiff));
+
+            try
+            {
+                this.ClientSize = new Size(this.ClientSize.Width + stepW, this.ClientSize.Height + stepH);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Erro ao definir ClientSize na animação: {ex.Message}");
+                this.ClientSize = targetSize;
+                resizeTimer?.Stop();
             }
         }
         #endregion
@@ -127,6 +168,15 @@ namespace APIRunner
         #region Eventos do Formulário
         private async void Form1_Load(object sender, EventArgs e)
         {
+            try
+            {
+                UpdateFormSize(Config.CompactInterface, animate: false);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"!!! EXCEPTION setting initial form size in Form1_Load: {ex}");
+            }
+
             try
             {
                 var options = new CoreWebView2EnvironmentOptions();
