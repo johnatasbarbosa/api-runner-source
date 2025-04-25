@@ -23,7 +23,7 @@ export default {
       "Se o sistema iniciar sem um arquivo config.json ou com um arquivo vazio ele vai automaticamente criar um novo arquivo com as configurações padrão.",
       "Se o sistema iniciar com um arquivo config.json inválido, ele vai mostrar uma mensagem de erro devidamente tratada.",
       "Corrigida falta de feedback ao realizar gitpull em sistemas onde ocorriam falhas no git. Agora um modal de erro será exibido no lugar.",
-      "Iniciar e pausar aplicações agora tem tratamento dinamico e responde tanto ao fechamento externo do processo quando a ação manual do usuário.",
+      "Iniciar e pausar aplicações agora tem tratamento dinâmico e responde tanto ao fechamento externo do processo quando a ação manual do usuário.",
       "Corrigido falha onde permitia que o usuário abrisse várias instancias do Visual Studio travando o sistema.",
       "Corrigido erro onde o sistema não atualizava corretamente o status de aplicações que falhavam ao iniciar.",
       "Corrigido problema onde várias instancias dotnet eram abertas com múltiplos cliques no botão de iniciar.",
