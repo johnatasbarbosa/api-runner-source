@@ -1,0 +1,21 @@
+{
+  "name": "api-runner-web",
+  "version": "2.0.0",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "vite": "^6.3.2"
+  },
+  "dependencies": {
+    "tippy.js": "^6.3.7"
+  }
+}

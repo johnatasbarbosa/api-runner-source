@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "APIRunner": {
+      "commandName": "Project",
+      "jsWebView2Debugging": true,
+      "nativeDebugging": true
+    }
+  }
+}

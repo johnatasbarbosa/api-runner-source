@@ -1,0 +1,35 @@
+<div class="modal-config" id="configModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title">Configurações</h3>
+      <button class="modal-close" id="btnCloseSettings"><i class="fas fa-times"
+          data-tippy-content="Fechar"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-fixed-content">
+        <div class="modal-tabs">
+          <button class="tab-button active" id="generalTab" data-tab="Geral">
+            <i class="fa-solid fa-globe"></i> Geral
+          </button>
+          <button class="tab-button" id="paramsTab" data-tab="Parâmetros">
+            <i class="fas fa-cog"></i> Parâmetros
+          </button>
+        </div>
+      </div>
+      <div class="tab-content">
+        <div class="tab-panel" id="generalTabContent">
+          <!-- general tab populated by JavaScript  -->
+        </div>
+        <div class="tab-panel dp-none" id="paramsTabContent">
+          <!-- params tab populated by JavaScript  -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="btnCancel">Cancelar</button>
+      <button class="btn btn-primary opc-05" id="btnSaveSettings" disabled>
+        Salvar
+      </button>
+    </div>
+  </div>
+</div>

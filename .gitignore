@@ -60,3 +60,6 @@ nunit-*.xml
 *.csproj.DotSettings
 *.vspscc
 *.vssscc
+
+# Configurações locais
+config.json

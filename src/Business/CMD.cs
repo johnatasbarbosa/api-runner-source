@@ -5,11 +5,14 @@ namespace APIRunner.Business;
 
 public static class CMD
 {
-    public static Process RunDotnet(Process process, string path)
+    public static Process RunDotnet(Process? process, string path)
     {
-        StopProcess(process);
-        process = StartProcess(process, path, "dotnet", "watch run");
+        if (process != null && !process.HasExited)
+        {
+            StopProcess(process);
+        }
 
+        process = StartProcess(new Process(), path, "dotnet", "watch run");
         return process;
     }
 
@@ -28,15 +31,22 @@ public static class CMD
         }.Start();
     }
 
-    public static void OpenVisualStudio(string filePath)
+    public static Process OpenVisualStudio(string solutionFile)
     {
-        new Process
+        // Cria um novo ProcessStartInfo
+        ProcessStartInfo startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo(filePath)
-            {
-                UseShellExecute = true
-            }
-        }.Start();
+            FileName = solutionFile,
+            UseShellExecute = true
+        };
+
+        // Inicia o processo e retorna a referência
+        var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            throw new InvalidOperationException("Failed to start the process.");
+        }
+        return process;
     }
 
     public static void RunBatFile(string path, string file)
@@ -64,12 +74,16 @@ public static class CMD
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = false
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Minimized
         };
 
+        processStartInfo.FileName = fileName;
+        processStartInfo.Arguments = arguments;
+
         process = new Process { StartInfo = processStartInfo };
-        process.OutputDataReceived += (sender, args) => Console.WriteLine(args.Data);
-        process.ErrorDataReceived += (sender, args) => Console.WriteLine("ERROR: " + args.Data);
+        process.OutputDataReceived += (sender, args) => { };
+        process.ErrorDataReceived += (sender, args) => { };
 
         process.Start();
         process.BeginOutputReadLine();
@@ -83,8 +97,6 @@ public static class CMD
         if (process != null && !process.HasExited)
         {
             process.Kill();
-            //process.WaitForExit();
-            Console.WriteLine("Process stopped.");
         }
     }
 }
