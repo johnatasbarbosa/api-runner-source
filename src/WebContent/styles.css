@@ -122,7 +122,7 @@
     /* Animações */
     --animation-duration-spin-fast: 0.7s;
     --animation-duration-spin-slow: 1s;
-    --animation-duration-fade: 1.5s;
+    --animation-duration-fade: 3.0s;
     --animation-duration-flip: 0.8s;
 }
 

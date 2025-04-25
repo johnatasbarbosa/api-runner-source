@@ -237,7 +237,7 @@ function getIpStatusText(status) {
     case IpStatus.IpBlocked: return "IP bloqueado";
     case IpStatus.CheckingIp: return "Verificando IP";
     case IpStatus.ReleasingIp: return "Liberando IP";
-    default: return "Desconhecido";
+    default: return "IP bloqueado";
   }
 }
 
